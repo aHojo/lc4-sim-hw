@@ -1,20 +1,14 @@
 all: trace
 
 trace: LC4.o loader.o trace.c
-	#
-	#NOTE: CIS 240 students - this Makefile is broken, you must fix it before it will work!!
-	#
-	clang -g LC4.o loader.o trace.c -o trace
+	clang -Wall -g LC4.o loader.o trace.c -o trace
 
-LC4.o:
-	#
-	#CIS 240 TODO: update this target to produce LC4.o
-	#
+LC4.o: LC4.c LC4.h
+	clang -Wall-c LC4.c
 
-loader.o: 
-	#
-	#CIS 240 TODO: update this target to produce loader.o
-	#
+loader.o: loader.c loader.h
+
+	clang -Wall -c loader.c
 
 clean:
 	rm -rf *.o
