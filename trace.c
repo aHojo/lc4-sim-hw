@@ -51,7 +51,7 @@ int main(int argc, char **argv)
         }
         for (size_t i = 0; i < 65536; i++)
         {
-            printf("Address: %04zx Contents: %04x \n",i,machine_state->memory[i]);
+            printf("Address: %ld Contents: %04x \n",i,machine_state->memory[i]);
         }
         
     }
