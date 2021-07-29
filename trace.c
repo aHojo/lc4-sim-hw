@@ -27,7 +27,7 @@ int main(int argc, char **argv)
     */
     char* outfile; // File to be written to
     FILE *outputfp; // File pointer
-    MachineState *machine_state = NULL;
+    MachineState *machine_state=malloc(sizeof(MachineState));
 
     if (!(argc >= 3)) {
         printf("usage: ./trace <filename> <...objectfiles>\n");
@@ -38,19 +38,25 @@ int main(int argc, char **argv)
         if (access(argv[i], F_OK) == -1)
         {
             printf("Error 1: %s does not exist\n", argv[i]);
-            return 1;
+            return -1;
         }
     }
     outfile = argv[1];
 
+    
     for (int i =2; i < argc; i++) {
         int rC = ReadObjectFile(argv[i], machine_state);
         if (rC != 0) {
             printf("Error 3: Failed to parse object file: %s\n", argv[i]);
         }
+        for (size_t i = 0; i < 65536; i++)
+        {
+            printf("Address: %04zx Contents: %04x \n",i,machine_state->memory[i]);
+        }
         
     }
 
+    free(machine_state);
 
     return 0;
 }
