@@ -17,6 +17,8 @@ int ReadObjectFile(char *filename, MachineState *CPU)
   unsigned short header;
   unsigned short address;
   unsigned short length;
+  unsigned short line;
+  unsigned short index;
   FILE *file;
 
   file = fopen(filename, "rb"); // open the object file for reading.
@@ -35,30 +37,27 @@ int ReadObjectFile(char *filename, MachineState *CPU)
     {
     // Code Header
     case 0xCADE:
-      parse_header(&address, &length, file);
+      parse_header(&address, &length, NULL, NULL, file);
       load_memory(address, length, CPU, file);
-      printf("%04x: Address: %04x, WordBody: %04x\n", swappedBytes, address, length);
       break;
     // Data Header
     case 0xDADA:
-      parse_header(&address, &length, file);
+      parse_header(&address, &length, NULL, NULL, file);
       load_memory(address, length, CPU, file);
-      printf("%04x: Address: %04x, WordBody: %04x\n", swappedBytes, address, length);
       break;
     // Symbol Header
     case 0xC3B7:
-      parse_header(&address, &length, file);
-      printf("%04x: Address: %04x, WordBody: %04x\n", swappedBytes, address, length);
+      parse_header(&address, &length, NULL, NULL, file);
+      read_byte(length, file);
       break;
     // File Name Header
     case 0xF17E:
-      parse_header(&address, &length, file);
-      printf("%04x: Address: %04x, WordBody: %04x\n", swappedBytes, address, length);
+      parse_header(NULL, &length, NULL, NULL, file);
+      read_byte(length, file);
       break;
     // Line Number Header
     case 0x715E:
-      parse_header(&address, &length, file);
-      printf("%04x: Address: %04x, WordBody: %04x\n", swappedBytes, address, length);
+      parse_header(&address, &length, &line, &index, file);
       break;
     }
   }
@@ -66,15 +65,27 @@ int ReadObjectFile(char *filename, MachineState *CPU)
   return 0;
 }
 
-int parse_header(unsigned short *address, unsigned short *length, FILE *file)
+int parse_header(unsigned short *address, unsigned short *length, unsigned short *line, unsigned short *index ,FILE *file)
 {
   int exit_status = 0;
 
-  exit_status = fread(address, sizeof(unsigned short), 1, file);
-  *address = swap_two_bytes(*address);
+  if (address!= NULL){
+    exit_status = fread(address, sizeof(unsigned short), 1, file);
+    *address = swap_two_bytes(*address);
+  }
+  // line and index are optional and only used for the line number header
+  if (line != NULL){
+    exit_status = fread(line, sizeof(unsigned short), 1, file);
+    *line = swap_two_bytes(*line);
+  }
+
+  if (index != NULL){
+    exit_status = fread(index, sizeof(unsigned short), 1, file);
+    *index = swap_two_bytes(*index);
+  }
+  
 
   exit_status = fread(length, sizeof(unsigned short), 1, file);
-
   *length = swap_two_bytes(*length);
 
   return exit_status;
@@ -94,4 +105,19 @@ unsigned short int swap_two_bytes(unsigned short int num)
 {
   unsigned short int endianSwitch = (((num & 0x00FF) << 8) | ((num & 0xFF00) >> 8));
   return endianSwitch;
+}
+
+int read_byte(unsigned short length, FILE *file)
+{
+  unsigned char byte;
+  printf("Byte: ");
+  for (int i = 0; i < length; i++)
+  {
+    byte = fgetc(file);
+    printf("%c", byte);
+  }
+  printf("\n");
+
+  
+  return 0;
 }
