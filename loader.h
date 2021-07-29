@@ -7,3 +7,4 @@
 
 // Read an object file and modify the machine state as described in the writeup
 int ReadObjectFile(char* filename, MachineState* CPU);
+unsigned short int swap_two_bytes(unsigned short int num);

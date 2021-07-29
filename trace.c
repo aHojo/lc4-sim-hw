@@ -25,7 +25,9 @@ int main(int argc, char **argv)
     the .ASM is the original assembly file that the OBJ was produced from
     the .TXT file is the expected output of your simulator for the given OBJ file
     */
-    char* outfile;
+    char* outfile; // File to be written to
+    FILE *outputfp; // File pointer
+    MachineState *machine_state = NULL;
 
     if (!(argc >= 3)) {
         printf("usage: ./trace <filename> <...objectfiles>\n");
@@ -40,6 +42,14 @@ int main(int argc, char **argv)
         }
     }
     outfile = argv[1];
+
+    for (int i =2; i < argc; i++) {
+        int rC = ReadObjectFile(argv[i], machine_state);
+        if (rC != 0) {
+            printf("Error 3: Failed to parse object file: %s\n", argv[i]);
+        }
+        
+    }
 
 
     return 0;
