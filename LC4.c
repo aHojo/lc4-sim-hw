@@ -182,6 +182,11 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
     printf("Current Opcode is %x\n", opcode);
     switch (opcode)
     {
+        case 0:
+        ClearSignals(CPU);
+
+        BranchOp(CPU, output);
+        break;
 
     case 1: // Arithmetic Operations
         ClearSignals(CPU);
@@ -330,9 +335,54 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         break;
     case 2: //SUB
         printf("Got SUB: SUBOP: %d\n", subopcode);
+        rd = INSN_11_9(instruction);
+        rs = INSN_8_6(instruction);
+        rt = INSN_2_0(instruction);
+        lastRegWritten = rd;
+
+        CPU->R[rd] = CPU->R[rs] - CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+
+        if (CPU->regInputVal < 0)
+        {
+            SetNZP(CPU, 4);
+        }
+        else if (CPU->regInputVal == 0)
+        {
+            SetNZP(CPU, 2);
+        }
+        else {
+            SetNZP(CPU, 1);
+        }
+
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
+
         break;
     case 3: // DIV
         printf("Got DIV: SUBOP: %d\n", subopcode);
+        rd = INSN_11_9(instruction);
+        rs = INSN_8_6(instruction);
+        rt = INSN_2_0(instruction);
+        lastRegWritten = rd;
+
+        CPU->R[rd] = CPU->R[rs] / CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+
+        if (CPU->regInputVal < 0)
+        {
+            SetNZP(CPU, 4);
+        }
+        else if (CPU->regInputVal == 0)
+        {
+            SetNZP(CPU, 2);
+        }
+        else {
+            SetNZP(CPU, 1);
+        }
+
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
         break;
 
     default: // ADD IMM

@@ -9,7 +9,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/trace",
-      "args": ["hi", "p2_test_cases/public-test_basic.obj"],
+      "args": ["hi.txt", "p2_test_cases/public-test_basic.obj"],
       "stopAtEntry": true,
       "cwd": "${fileDirname}",
       "environment": [],
