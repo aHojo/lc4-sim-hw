@@ -25,7 +25,7 @@ int main(int argc, char **argv)
     the .ASM is the original assembly file that the OBJ was produced from
     the .TXT file is the expected output of your simulator for the given OBJ file
     */
-    char* outfile; // File to be written to
+    
     FILE *outputfp; // File pointer
     MachineState *machine_state=malloc(sizeof(MachineState));
 
@@ -41,7 +41,12 @@ int main(int argc, char **argv)
             return -1;
         }
     }
-    outfile = argv[1];
+
+    // Zero out our Penn Simulator
+    Reset(machine_state);
+
+
+    outputfp = fopen(argv[1], "wb");
 
     
     for (int i =2; i < argc; i++) {
@@ -49,14 +54,26 @@ int main(int argc, char **argv)
         if (rC != 0) {
             printf("Error 3: Failed to parse object file: %s\n", argv[i]);
         }
-        for (size_t i = 0; i < 65536; i++)
-        {
-            printf("Address: %ld Contents: %04x \n",i,machine_state->memory[i]);
-        }
+        // for (size_t i = 0; i < 65536; i++)
+        // {
+        //     printf("Address: %ld Contents: %04x \n",i,machine_state->memory[i]);
+        // }
         
     }
 
+    // // Exit when the MachineState->PC == 0x80FF
+    while(machine_state->PC != 0x80FF)
+    {
+        int exitStatus = UpdateMachineState(machine_state, outputfp);
+        
+        if (exitStatus != 0)
+        {
+            break;
+        }
+    }
+
     free(machine_state);
+    fclose(outputfp);
 
     return 0;
 }
