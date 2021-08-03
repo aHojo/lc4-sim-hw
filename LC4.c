@@ -9,7 +9,7 @@
 void SetConst(MachineState *CPU, unsigned short instr);
 
 // Function to update our program controller
-void UpdatePC(MachineState *CPU);
+void UpdatePC(MachineState *CPU, unsigned short handler);
 /*
 MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 */
@@ -17,8 +17,9 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define OPCODE(I) ((I) >> 12)           // opcode
 #define INSN_11_9(I) (((I) >> 9) & 0x7) // get rd
 #define INSN_8_6(I) (((I) >> 6) & 0x7)  // get rs
-#define INSN_2_0(I) ((I)&0x7)           // get Rt
-#define INSN_8_0(I) ((I)&0x1FF)         // get IMM9
+#define INSN_2_0(I) ((I) & 0x7)           // get Rt
+#define INSN_8_0(I) ((I) & 0x1FF)         // get IMM9
+#define INSN_7_0(I) ((I) & 0xFF)          // get IMM 7
 #define INSN_5_3(I) (((I) >> 3) & 0x7)
 #define INSN_8_7(I) (((I) >> 7) & 0x3)
 #define INSN_5_0(I) ((I)&0x3F)
@@ -26,7 +27,6 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define INSN_5_4(I) (((I) >> 4) & 0x3)
 #define INSN_4_0(I) ((I)&0x1F)
 #define INSN_3_0(I) ((I)&0xF)
-#define INSN_7_0(I) ((I)&0xFF)
 #define INSN_6_0(I) ((I)&0x7F)
 #define INSN_10_0(I) ((I)&0x7FF)
 #define INSN_15(I) ((I) >> 15)
@@ -101,13 +101,13 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
     case 9: // Const OPCODE
         printf("got const");
         SetConst(CPU, instruction);
-        UpdatePC(CPU);
+        UpdatePC(CPU, 0);
         break;
     case 15: // TRAP SIGNAL
-        UpdatePC(CPU); // set PC = PC + 1; 
+        UpdatePC(CPU, 0); // set PC = PC + 1; 
         CPU->R[7] = CPU->PC;
 
-        UpdatePC(CPU); // TODO second part of trap
+        UpdatePC(CPU, 15); // TODO second part of trap
 
         CPU->PSR=CPU->PSR | 0x8000; // Set the MSB to 1
         break;
@@ -148,7 +148,7 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
 
         CPU->R[rd] = CPU->R[rs] + CPU->R[rt];
         
-        UpdatePC(CPU);
+        UpdatePC(CPU, 0);
         break;
     case 1: // MUL
         printf("Got MUL: SUBOP: %d\n", subopcode);
@@ -157,7 +157,7 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         rt = INSN_2_0(instruction);
 
         CPU->R[rd] = CPU->R[rs] * CPU->R[rt];
-        UpdatePC(CPU);
+        UpdatePC(CPU, 0);
         break;
     case 2: //SUB
         printf("Got SUB: SUBOP: %d\n", subopcode);
@@ -216,14 +216,31 @@ void SetNZP(MachineState *CPU, short result)
 
 void SetConst(MachineState *CPU, unsigned short instr)
 {
-    unsigned short reg = INSN_11_9(instr);
-    unsigned constant = INSN_8_0(instr);
+    unsigned short int reg = INSN_11_9(instr);
+    unsigned short int constant = INSN_8_0(instr);
 
     CPU->R[reg] = constant;
 }
 
-void UpdatePC(MachineState *CPU)
+void UpdatePC(MachineState *CPU, unsigned short int handler)
 {
-    // TODO Handle other cases
-    CPU->PC += 1;
+    unsigned short int imm = INSN_7_0(instruction);
+    switch (handler)
+    {
+    
+    case 0:
+        CPU->PC += 1;
+        break;
+
+    case 15:
+        
+        CPU->PC = (0x8000 | imm);
+        break;
+    
+    default:
+        printf("TODO");
+        break;
+        // todo implement failure. 
+    }
+    
 }
