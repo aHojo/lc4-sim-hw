@@ -10,12 +10,21 @@
       "request": "launch",
       "program": "${workspaceFolder}/trace",
       "args": ["hi.txt", "p2_test_cases/public-test_trap_rti_ldr_str.obj"],
-      "stopAtEntry": false,
+      "stopAtEntry": true,
       "cwd": "${fileDirname}",
       "environment": [],
       "externalConsole": false,
+      // "MIMode": "gdb",
       "MIMode": "lldb",
-      "preLaunchTask": "C/C++: clang build active file"
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "C/C++: clang build active file",
+      "miDebuggerPath": "/usr/bin/lldb"
     }
   ]
 }
