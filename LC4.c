@@ -620,7 +620,7 @@ void LoadOp(MachineState *CPU, FILE *output)
     CPU->DATA_WE = 1;
     CPU->regFile_WE = 1;
 
-    CPU->dmemAddr = rs + imm5;
+    CPU->dmemAddr = CPU->R[rs] + imm5;
     CPU->dmemValue = CPU->memory[CPU->dmemAddr];
     CPU->R[rd] = CPU->dmemValue;
     CPU->regInputVal = CPU->dmemValue;
