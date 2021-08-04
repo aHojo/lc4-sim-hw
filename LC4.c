@@ -15,6 +15,11 @@ void UpdatePC(MachineState *CPU, unsigned short handler);
 // Fills string with binary representation.
 void intToB(char *); // Always gives my the revers order
 
+void GetHighConst(MachineState* CPU, FILE* output);
+
+void StrOp(MachineState *CPU, FILE *output);
+void LoadOp(MachineState *CPU, FILE *output);
+
 /*
 MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 */
@@ -24,18 +29,18 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define INSN_8_6(I) (((I) >> 6) & 0x7)  // get rs
 #define INSN_2_0(I) ((I)&0x7)           // get Rt
 #define INSN_8_0(I) ((I)&0x1FF)         // get IMM9
-#define INSN_7_0(I) ((I)&0xFF)          // get IMM 7
+#define INSN_7_0(I) ((I)&0xFF)          // get IMM 8
+#define INSN_10_0(I) ((I)&0x7FF) // Get IMM11
 #define INSN_15_9(I) (((I) >> 9) & 0x7F); // Get Branch OPCODE
 #define INSN_4_0(I) ((I)&0x1F)           // for add IMMM
 #define CHECK_MSB(I) ((I) >> 15) // Get MSB
+#define INSN_15_11(I) (((I) >> 11) & 0x1F) // Get Jump OPCODE
 #define INSN_5_3(I) (((I) >> 3) & 0x7)
 #define INSN_8_7(I) (((I) >> 7) & 0x3)
 #define INSN_5_0(I) ((I)&0x3F)
-#define INSN_11(I) (((I) >> 11) & 0x1)
 #define INSN_5_4(I) (((I) >> 4) & 0x3)
 #define INSN_3_0(I) ((I)&0xF)
 #define INSN_6_0(I) ((I)&0x7F)
-#define INSN_10_0(I) ((I)&0x7FF)
 #define INSN_5(I) (((I) >> 5) & 0x1)
 
 //  Instruction we are currently executing.
@@ -194,6 +199,20 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
 
         ArithmeticOp(CPU, output);
         break;
+    case 6: // Load
+        ClearSignals(CPU);
+        LoadOp(CPU, output);
+        WriteOut(CPU, output);
+        UpdatePC(CPU,0);
+        fclose(output);
+        break;
+    case 7: //Store operations
+        ClearSignals(CPU);
+        StrOp(CPU, output);
+
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
+    break;
     case 8: // THIS IS RTI.
         ClearSignals(CPU);
         WriteOut(CPU, output);
@@ -208,6 +227,19 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
         ClearSignals(CPU);
 
         SetConst(CPU, output);
+        UpdatePC(CPU, 0);
+        break;
+
+    case 12: // Jump
+        ClearSignals(CPU);
+
+        JumpOp(CPU, output);
+        break;
+    case 13: // High Const
+        ClearSignals(CPU);
+
+        GetHighConst(CPU, output);
+        WriteOut(CPU, output);
         UpdatePC(CPU, 0);
         break;
     case 15: // TRAP SIGNAL
@@ -284,9 +316,9 @@ void BranchOp(MachineState *CPU, FILE *output)
                 WriteOut(CPU, output);
                 if(psr == 4)
                 {
-                    CPU->PC = CPU->PC +offset;
+                    CPU->PC = CPU->PC + offset;
                 }
-                
+                CPU->PC = CPU->PC + 1;
                 
             break;
 
@@ -444,18 +476,6 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
             SetNZP(CPU, 1);
         }
 
-        // if (CPU->regInputVal < 0)
-        // {
-        //     SetNZP(CPU, 4);
-        // }
-        // else if (CPU->regInputVal == 0)
-        // {
-        //     SetNZP(CPU, 2);
-        // }
-        // else {
-        //     SetNZP(CPU, 1);
-        // }
-
         WriteOut(CPU, output);
         UpdatePC(CPU, 0);
 
@@ -544,6 +564,30 @@ void LogicalOp(MachineState *CPU, FILE *output)
  */
 void JumpOp(MachineState *CPU, FILE *output)
 {
+    unsigned short opcode = INSN_15_11(instruction);
+    unsigned short rs;
+    unsigned short imm11;
+
+    CPU->regFile_WE = 0;
+    CPU->NZP_WE = 0;
+    CPU->DATA_WE = 0;
+    CPU->regInputVal = 0;
+
+    switch (opcode)
+    {
+    case 24:
+        rs =  INSN_8_6(instruction);
+        WriteOut(CPU, output);
+        CPU->PC = rs;
+        break;
+    case 25:
+        imm11 = INSN_10_0(instruction);
+        WriteOut(CPU, output);
+        CPU->PC = CPU->PC + imm11 + 1;
+    break;
+    default:
+        break;
+    }
 }
 
 /*
@@ -551,6 +595,7 @@ void JumpOp(MachineState *CPU, FILE *output)
  */
 void JSROp(MachineState *CPU, FILE *output)
 {
+
 }
 
 /*
@@ -560,6 +605,59 @@ void ShiftModOp(MachineState *CPU, FILE *output)
 {
 }
 
+void LoadOp(MachineState *CPU, FILE *output)
+{
+    unsigned short int rd;
+    unsigned short int rs;
+    unsigned short int imm5;
+    int x;
+
+    rd = INSN_11_9(instruction);
+    rs = INSN_8_6(instruction);
+    imm5 = INSN_5_0(instruction);
+
+    CPU->NZP_WE = 1;
+    CPU->DATA_WE = 1;
+    CPU->regFile_WE = 1;
+
+    CPU->dmemAddr = rs + imm5;
+    CPU->dmemValue = CPU->memory[CPU->dmemAddr];
+    CPU->R[rd] = CPU->dmemValue;
+    CPU->regInputVal = CPU->dmemValue;
+
+    x = CHECK_MSB(CPU->R[rd]);
+
+    if (x == 1)
+    {
+        SetNZP(CPU, 4);
+    }
+    else if (CPU->regInputVal == 0)
+    {
+        SetNZP(CPU, 2);
+    }
+    else {
+        SetNZP(CPU, 1);
+    }
+
+
+}
+
+void StrOp(MachineState *CPU, FILE *output)
+{
+    unsigned short int rt;
+    unsigned short int rs;
+    short int imm5;
+
+    rt = INSN_11_9(instruction);
+    rs = INSN_8_6(instruction);
+    imm5 = INSN_5_0(instruction);
+
+    CPU->DATA_WE = 1;
+
+    CPU->dmemAddr = CPU->R[rs] + imm5;
+    CPU->dmemValue = CPU->R[rt];
+    CPU->memory[CPU->dmemAddr] = CPU->R[rt];
+}
 /*
  * Set the NZP bits in the PSR.
  */
@@ -609,7 +707,9 @@ void SetNZP(MachineState *CPU, short result)
 }
 
 void SetConst(MachineState *CPU, FILE *output)
-{
+{   
+    // TODO Check for negative numbers... 
+
     unsigned short int reg = INSN_11_9(instruction);
     unsigned short int constant = INSN_8_0(instruction);
 
@@ -682,4 +782,36 @@ void intToB(char *binary)
 
     binary[i] = '\0';
     printf("\n");
+}
+
+void GetHighConst(MachineState* CPU, FILE* output)
+{
+    unsigned short int rd = INSN_11_9(instruction);
+    unsigned short int imm8 = INSN_7_0(instruction);
+    short int neg;
+
+
+    CPU->NZP_WE = 1;
+    CPU->regFile_WE = 1;
+    CPU->rdMux_CTL = 0;
+    CPU->DATA_WE = 0;
+
+    CPU->R[rd] =  (rd & 0xFF) | (imm8 << 8);
+    CPU->regInputVal = CPU->R[rd];
+    neg = CPU->R[rd] & 0x8000; // check if negative
+
+        if (neg < 0)
+        {
+            SetNZP(CPU, 4);
+        }
+        else if (CPU->regInputVal == 0)
+        {
+            SetNZP(CPU, 2);
+        }
+        else {
+            SetNZP(CPU, 1);
+        }
+
+
+
 }

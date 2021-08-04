@@ -9,7 +9,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/trace",
-      "args": ["hi.txt", "p2_test_cases/public-BR_arith.obj"],
+      "args": ["hi.txt", "p2_test_cases/public-test_trap_rti_ldr_str.obj"],
       "stopAtEntry": true,
       "cwd": "${fileDirname}",
       "environment": [],
