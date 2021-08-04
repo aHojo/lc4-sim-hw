@@ -25,16 +25,17 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define INSN_2_0(I) ((I)&0x7)           // get Rt
 #define INSN_8_0(I) ((I)&0x1FF)         // get IMM9
 #define INSN_7_0(I) ((I)&0xFF)          // get IMM 7
+#define INSN_15_9(I) (((I) >> 9) & 0x7F); // Get Branch OPCODE
+#define INSN_4_0(I) ((I)&0x1F)           // for add IMMM
+#define CHECK_MSB(I) ((I) >> 15) // Get MSB
 #define INSN_5_3(I) (((I) >> 3) & 0x7)
 #define INSN_8_7(I) (((I) >> 7) & 0x3)
 #define INSN_5_0(I) ((I)&0x3F)
 #define INSN_11(I) (((I) >> 11) & 0x1)
 #define INSN_5_4(I) (((I) >> 4) & 0x3)
-#define INSN_4_0(I) ((I)&0x1F)
 #define INSN_3_0(I) ((I)&0xF)
 #define INSN_6_0(I) ((I)&0x7F)
 #define INSN_10_0(I) ((I)&0x7FF)
-#define INSN_15(I) ((I) >> 15)
 #define INSN_5(I) (((I) >> 5) & 0x1)
 
 //  Instruction we are currently executing.
@@ -126,7 +127,7 @@ void WriteOut(MachineState *CPU, FILE *output)
     if (CPU->regFile_WE == 1)
     {
         fprintf(output, "%d ", lastRegWritten);
-        fprintf(output, "%04x ", CPU->regInputVal);
+        fprintf(output, "%04X ", CPU->regInputVal);
     }
     else
     {
@@ -260,6 +261,87 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
  */
 void BranchOp(MachineState *CPU, FILE *output)
 {
+
+        unsigned short int opcode = INSN_15_9(instruction);
+        unsigned short int offset = INSN_8_0(instruction);
+        // Set Branch codes
+        CPU->regFile_WE = 0;
+        CPU->NZP_WE = 0;
+        CPU->DATA_WE = 0;
+        CPU->regInputVal = 0;
+        
+        unsigned short int psr = CPU->PSR & 0x7;
+        /* 
+        1 = result > 0
+        2 = 0
+        4 = result < 0;
+        */
+        switch (opcode){
+            case 0: // NOP
+                UpdatePC(CPU, 0);
+            break;
+            case 4: // BRn
+                WriteOut(CPU, output);
+                if(psr == 4)
+                {
+                    CPU->PC = CPU->PC +offset;
+                }
+                
+                
+            break;
+
+            case 6: // BRnz
+                WriteOut(CPU, output);
+                if ((psr == 4) || psr == 2)
+                {
+                    CPU->PC = CPU->PC +  offset;
+                }
+                CPU->PC = CPU->PC + 1;
+                
+            break;
+
+            case 5: //BRnp
+
+                WriteOut(CPU, output);
+                if ((psr == 4) || psr == 1)
+                {
+                    CPU->PC = CPU->PC + offset;
+                } 
+                CPU->PC = CPU->PC + 1;
+                
+            break;
+
+            case 2: //BRz
+                WriteOut(CPU, output);
+                if (psr == 2)
+                {
+                    CPU->PC = CPU->PC + offset;
+                }
+                CPU->PC = CPU->PC + 1;
+            break;
+
+            case 3: //BRzp
+                WriteOut(CPU, output);
+                if((psr == 1) || (psr == 2))
+                {
+                    CPU->PC = CPU->PC + offset;
+                }
+                CPU->PC = CPU->PC + 1;
+            break;
+
+            case 1: //BRp
+                WriteOut(CPU, output);
+                if (psr == 1){
+                    CPU->PC = CPU->PC + offset;
+                }
+                CPU->PC = CPU->PC + 1;
+            break;
+
+            case 7: // BRnzp
+                WriteOut(CPU, output);
+                CPU->PC = CPU->PC + 1+ offset; // Always do this.
+            break;
+        }
 }
 
 /*
@@ -271,6 +353,7 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
     unsigned short rd = 0;
     unsigned short rt = 0;
     unsigned short rs = 0;
+    signed short int neg;
 
     CPU->rdMux_CTL = 0;
     CPU->rtMux_CTL = 0;
@@ -292,7 +375,10 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         CPU->R[rd] = CPU->R[rs] + CPU->R[rt];
         CPU->regInputVal = CPU->R[rd];
 
-        if (CPU->regInputVal < 0)
+
+        neg = CPU->R[rd] & 0x8000; // check if negative
+
+        if (neg < 0)
         {
             SetNZP(CPU, 4);
         }
@@ -317,8 +403,9 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
 
         CPU->R[rd] = CPU->R[rs] * CPU->R[rt];
         CPU->regInputVal = CPU->R[rd];
+        neg = CPU->R[rd] & 0x8000; // check if negative
 
-        if (CPU->regInputVal < 0)
+        if (neg < 0)
         {
             SetNZP(CPU, 4);
         }
@@ -343,7 +430,9 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         CPU->R[rd] = CPU->R[rs] - CPU->R[rt];
         CPU->regInputVal = CPU->R[rd];
 
-        if (CPU->regInputVal < 0)
+        neg = CPU->R[rd] & 0x8000; // check if negative
+
+        if (neg < 0)
         {
             SetNZP(CPU, 4);
         }
@@ -354,6 +443,18 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         else {
             SetNZP(CPU, 1);
         }
+
+        // if (CPU->regInputVal < 0)
+        // {
+        //     SetNZP(CPU, 4);
+        // }
+        // else if (CPU->regInputVal == 0)
+        // {
+        //     SetNZP(CPU, 2);
+        // }
+        // else {
+        //     SetNZP(CPU, 1);
+        // }
 
         WriteOut(CPU, output);
         UpdatePC(CPU, 0);
@@ -369,7 +470,9 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
         CPU->R[rd] = CPU->R[rs] / CPU->R[rt];
         CPU->regInputVal = CPU->R[rd];
 
-        if (CPU->regInputVal < 0)
+        neg = CPU->R[rd] & 0x8000; // check if negative
+
+        if (neg < 0)
         {
             SetNZP(CPU, 4);
         }
@@ -387,6 +490,37 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
 
     default: // ADD IMM
         printf("GOT ADD IMM: SUBOP: %d\n", subopcode);
+        rd = INSN_11_9(instruction);
+        rs = INSN_8_6(instruction);
+
+        unsigned  short imm = INSN_4_0(instruction);
+        signed short int magic = imm >> 4; // check for sign bit 0 positive, 1 negative
+
+        if (magic == 1)
+        {
+            imm = imm + 0xFFE0; // 65536 - 7 = 65529
+        }
+
+
+
+        CPU->R[rd] = CPU->R[rs] + imm;
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+
+        if (magic == 1)
+        {
+            SetNZP(CPU, 4);
+        }
+        else if (CPU->regInputVal == 0)
+        {
+            SetNZP(CPU, 2);
+        }
+        else {
+            SetNZP(CPU, 1);
+        }
+
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
         break;
     }
 }
@@ -435,9 +569,43 @@ void SetNZP(MachineState *CPU, short result)
         2 = 0
         4 = result < 0;
     */
+    int checkMSB = CHECK_MSB(CPU->PSR);
+
     CPU->NZPVal = result;
+
+    switch (result)
+    {
+    case 1:// Positive
+        if (checkMSB == 1)
+        {
+            CPU->PSR = 0x8001;
+        } else 
+        {
+            CPU->PSR = 1;
+        }
+        break;
+    case 2:// zero
+        if (checkMSB == 1)
+        {
+            CPU->PSR = 0x8002;
+        } else 
+        {
+            CPU->PSR = 2;
+        }
+        break;
+    case 4:// Negative
+        if (checkMSB == 1)
+        {
+            CPU->PSR = 0x8004;
+        } else 
+        {
+            CPU->PSR = 4;
+        }
+        break;
     
-    
+    default:
+        break;
+    }
 }
 
 void SetConst(MachineState *CPU, FILE *output)
