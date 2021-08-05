@@ -27,15 +27,20 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define OPCODE(I) ((I) >> 12)           // opcode
 #define INSN_11_9(I) (((I) >> 9) & 0x7) // get rd
 #define INSN_8_6(I) (((I) >> 6) & 0x7)  // get rs
+#define INSN_8_7(I) (((I) >> 7) & 0x3)  // get subopcode for cmp
+#define INSN_5_4(I) (((I) >> 4) & 0x3)  // get subopcode for shift
 #define INSN_2_0(I) ((I)&0x7)           // get Rt
 #define INSN_8_0(I) ((I)&0x1FF)         // get IMM9
 #define INSN_7_0(I) ((I)&0xFF)          // get IMM 8
+#define INSN_6_0(I) ((I)&0xFF)          // get IMM 7
 #define INSN_10_0(I) ((I)&0x7FF) // Get IMM11
 #define INSN_15_9(I) (((I) >> 9) & 0x7F); // Get Branch OPCODE
 #define INSN_4_0(I) ((I)&0x1F)           // for add IMMM
+#define INSN_3_0(I) ((I)&0xF)           // for add IMMM
 #define CHECK_MSB(I) ((I) >> 15) // Get MSB
 #define CHECK_MSB_9(I) (((I) >> 8) & (1)) // SEXT(IMM9)
-#define CHECK_MSB_4(I) (((I) >> 4) & (1)) // SEXT(IMM9)
+#define CHECK_MSB_4(I) (((I) >> 4) & (1)) // SEXT(IMM5)
+#define CHECK_MSB_6(I) (((I) >> 6) & (1)) // SEXT(IMM7)
 #define INSN_15_11(I) (((I) >> 11) & 0x1F) // Get Jump OPCODE
 #define INSN_5_3(I) (((I) >> 3) & 0x7) // Get the sub-opcode
 #define INSN_5_0(I) ((I)&0x3F) // GET IMM5
@@ -203,6 +208,9 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
         WriteOut(CPU, output);
         UpdatePC(CPU, 0);
     break;
+    case 4: // JSR - WIll call JSRR inside here if that is what is being called
+        ClearSignals(CPU);
+        
     case 5: // Logicals
         ClearSignals(CPU);
         LogicalOp(CPU, output);
@@ -246,7 +254,12 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
         SetConst(CPU, output);
         UpdatePC(CPU, 0);
         break;
-
+    case 10: // This is Shift operations
+        ClearSignals(CPU);
+        ShiftModOp(CPU, output);
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
+        break;
     case 12: // Jump
         ClearSignals(CPU);
 
@@ -573,14 +586,90 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
  */
 void ComparativeOp(MachineState *CPU, FILE *output)
 {   
-    unsigned short subopcode = INSN_5_3(instruction);
+    unsigned short subopcode = INSN_8_7(instruction);
     unsigned short rs = INSN_11_9(instruction);
     unsigned short rt = INSN_2_0(instruction);
+    signed short rss;
+    signed short rtt;
+    unsigned short SEXT7;
+    unsigned short UIMM7;
+    signed short ext;
 
     CPU->regFile_WE = 0;
     CPU->NZP_WE = 1;
     CPU->DATA_WE = 0;
     CPU->regInputVal = 0;
+
+    /* 
+        1 = result > 0
+        2 = 0
+        4 = result < 0;
+    */
+
+    switch (subopcode){
+
+        case 0: // CMP signed
+            rss = CPU->R[rs];
+            rtt = CPU->R[rt];
+            if(rss  < rtt)
+            {
+                SetNZP(CPU, 4);
+            }
+            else if (rss == rtt)
+            {
+                SetNZP(CPU, 2);
+            } else {
+                SetNZP(CPU, 1);
+            }
+            break;
+        case 1: // CMN signed
+            if(CPU->R[rs]  < CPU->R[rt])
+            {
+                SetNZP(CPU, 4);
+            }
+            else if (CPU->R[rs] == CPU->R[rt])
+            {
+                SetNZP(CPU, 2);
+            } else {
+                SetNZP(CPU, 1);
+            }
+            break;
+        case 2: // CMP singed imm
+            
+            rss = CPU->R[rs];
+            SEXT7 = INSN_6_0(instruction);
+            ext = SEXT7;
+            if (CHECK_MSB_6(ext) == 1)
+            {
+                ext = ext | 0xFF80;
+            }
+
+            if(rss  < ext)
+            {
+                SetNZP(CPU, 4);
+            }
+            else if (rss == ext)
+            {
+                SetNZP(CPU, 2);
+            } else {
+                SetNZP(CPU, 1);
+            }
+        case 3: // CMP unsigned imm
+            UIMM7 = INSN_6_0(instruction);
+            if(CPU->R[rs]  < UIMM7)
+            {
+                SetNZP(CPU, 4);
+            }
+            else if (CPU->R[rs] == UIMM7)
+            {
+                SetNZP(CPU, 2);
+            } else {
+                SetNZP(CPU, 1);
+            }
+            break;
+        default:
+        break;
+    }
 }
 
 /*
@@ -696,6 +785,46 @@ void JSROp(MachineState *CPU, FILE *output)
  */
 void ShiftModOp(MachineState *CPU, FILE *output)
 {
+    unsigned short subopcode = INSN_5_4(instruction);
+    unsigned short rd = INSN_11_9(instruction);
+    unsigned short rs = INSN_8_6(instruction);
+    unsigned short rt = INSN_2_0(instruction);
+    unsigned short uimm4 = INSN_3_0(instruction); 
+    signed short int neg;
+
+    switch (subopcode)
+    {
+    case 0: // SLL
+        CPU->R[rd] = CPU->R[rs] << uimm4;
+        CPU->regInputVal = CPU->R[rd];
+        break;
+    case 1: // SRA
+        CPU->R[rd] = CPU->R[rs] >> uimm4;
+        CPU->regInputVal = CPU->R[rd];
+        break;
+    case 2: // SRL
+        CPU->R[rd] = CPU->R[rs] >> uimm4;
+        CPU->regInputVal = CPU->R[rd];
+        break;
+    case 3: // MOD
+        CPU->R[rd] = CPU->R[rs] % CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+        break;
+    }
+
+    neg = CPU->R[rd] & 0x8000; // check if negative
+
+    if (neg < 0)
+    {
+        SetNZP(CPU, 4);
+    }
+    else if (CPU->regInputVal == 0)
+    {
+        SetNZP(CPU, 2);
+    }
+    else {
+        SetNZP(CPU, 1);
+    }
 }
 
 int LoadOp(MachineState *CPU, FILE *output)
