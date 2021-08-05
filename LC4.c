@@ -35,6 +35,7 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define INSN_4_0(I) ((I)&0x1F)           // for add IMMM
 #define CHECK_MSB(I) ((I) >> 15) // Get MSB
 #define CHECK_MSB_9(I) (((I) >> 8) & (1)) // SEXT(IMM9)
+#define CHECK_MSB_4(I) (((I) >> 4) & (1)) // SEXT(IMM9)
 #define INSN_15_11(I) (((I) >> 11) & 0x1F) // Get Jump OPCODE
 #define INSN_5_3(I) (((I) >> 3) & 0x7) // Get the sub-opcode
 #define INSN_5_0(I) ((I)&0x3F) // GET IMM5
@@ -194,9 +195,21 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
 
     case 1: // Arithmetic Operations
         ClearSignals(CPU);
-
         ArithmeticOp(CPU, output);
         break;
+    case 2: // CMP
+        ClearSignals(CPU);
+        ComparativeOp(CPU, output);
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
+    break;
+    case 5: // Logicals
+        ClearSignals(CPU);
+        LogicalOp(CPU, output);
+        WriteOut(CPU, output);
+        UpdatePC(CPU, 0);
+        break;
+
     case 6: // Load
         ClearSignals(CPU);
         check = LoadOp(CPU, output);
@@ -300,6 +313,13 @@ void BranchOp(MachineState *CPU, FILE *output)
 
         unsigned short int opcode = INSN_15_9(instruction);
         unsigned short int offset = INSN_8_0(instruction);
+        unsigned short int signExtend;
+
+        signExtend = offset;
+        if (CHECK_MSB_9(offset) == 1)
+        {
+            signExtend = signExtend | 0xFE00;
+        }
         // Set Branch codes
         CPU->regFile_WE = 0;
         CPU->NZP_WE = 0;
@@ -320,17 +340,16 @@ void BranchOp(MachineState *CPU, FILE *output)
                 WriteOut(CPU, output);
                 if(psr == 4)
                 {
-                    CPU->PC = CPU->PC + offset;
+                    CPU->PC = CPU->PC + signExtend;
                 }
                 CPU->PC = CPU->PC + 1;
                 
             break;
-
             case 6: // BRnz
                 WriteOut(CPU, output);
                 if ((psr == 4) || psr == 2)
                 {
-                    CPU->PC = CPU->PC +  offset;
+                    CPU->PC = CPU->PC +  signExtend;
                 }
                 CPU->PC = CPU->PC + 1;
                 
@@ -341,7 +360,7 @@ void BranchOp(MachineState *CPU, FILE *output)
                 WriteOut(CPU, output);
                 if ((psr == 4) || psr == 1)
                 {
-                    CPU->PC = CPU->PC + offset;
+                    CPU->PC = CPU->PC + signExtend;
                 } 
                 CPU->PC = CPU->PC + 1;
                 
@@ -351,7 +370,7 @@ void BranchOp(MachineState *CPU, FILE *output)
                 WriteOut(CPU, output);
                 if (psr == 2)
                 {
-                    CPU->PC = CPU->PC + offset;
+                    CPU->PC = CPU->PC + signExtend;
                 }
                 CPU->PC = CPU->PC + 1;
             break;
@@ -360,7 +379,7 @@ void BranchOp(MachineState *CPU, FILE *output)
                 WriteOut(CPU, output);
                 if((psr == 1) || (psr == 2))
                 {
-                    CPU->PC = CPU->PC + offset;
+                    CPU->PC = CPU->PC + signExtend;
                 }
                 CPU->PC = CPU->PC + 1;
             break;
@@ -368,14 +387,14 @@ void BranchOp(MachineState *CPU, FILE *output)
             case 1: //BRp
                 WriteOut(CPU, output);
                 if (psr == 1){
-                    CPU->PC = CPU->PC + offset;
+                    CPU->PC = CPU->PC + signExtend;
                 }
                 CPU->PC = CPU->PC + 1;
             break;
 
             case 7: // BRnzp
                 WriteOut(CPU, output);
-                CPU->PC = CPU->PC + 1+ offset; // Always do this.
+                CPU->PC = CPU->PC + 1+ signExtend; // Always do this.
             break;
         }
 }
@@ -553,7 +572,15 @@ void ArithmeticOp(MachineState *CPU, FILE *output)
  * Parses rest of comparative operation and prints out.
  */
 void ComparativeOp(MachineState *CPU, FILE *output)
-{
+{   
+    unsigned short subopcode = INSN_5_3(instruction);
+    unsigned short rs = INSN_11_9(instruction);
+    unsigned short rt = INSN_2_0(instruction);
+
+    CPU->regFile_WE = 0;
+    CPU->NZP_WE = 1;
+    CPU->DATA_WE = 0;
+    CPU->regInputVal = 0;
 }
 
 /*
@@ -561,6 +588,68 @@ void ComparativeOp(MachineState *CPU, FILE *output)
  */
 void LogicalOp(MachineState *CPU, FILE *output)
 {
+    unsigned short subopcode = INSN_5_3(instruction);
+    unsigned short rd = INSN_11_9(instruction);
+    unsigned short rs = INSN_8_6(instruction);
+    unsigned short rt = INSN_2_0(instruction);
+    unsigned short sext5;
+    signed short int signExtend;
+    signed short neg;
+
+    CPU->regFile_WE = 1;
+    CPU->NZP_WE = 1;
+    CPU->DATA_WE = 0;
+    CPU->regInputVal = 0;
+
+    switch (subopcode)
+    {
+    case 0: // AND
+        CPU->R[rd] = CPU->R[rs] & CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+        break;
+    case 1: // NOT
+        CPU->R[rd] = ~CPU->R[rs];
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+        break;
+    case 2: // or
+        CPU->R[rd] = CPU->R[rs] | CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+        break;
+    case 3: // COR
+        CPU->R[rd] = CPU->R[rs] ^ CPU->R[rt];
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+        break;
+    default: // AND IMM
+        sext5 = INSN_4_0(instruction);
+        signExtend = CHECK_MSB_4(sext5); // check for sign bit 0 positive, 1 negative
+        if(signExtend == 1)
+        {
+            signExtend = signExtend - 0xFFE0;
+        }
+
+        CPU->R[rd] = CPU->R[rs] & signExtend;
+        CPU->regInputVal = CPU->R[rd];
+        lastRegWritten = rd;
+        break;
+    }
+
+        neg = CPU->R[rd] & 0x8000; // check if negative
+
+        if (neg < 0)
+        {
+            SetNZP(CPU, 4);
+        }
+        else if (CPU->regInputVal == 0)
+        {
+            SetNZP(CPU, 2);
+        }
+        else {
+            SetNZP(CPU, 1);
+        }
 }
 
 /*
@@ -777,7 +866,6 @@ void SetNZP(MachineState *CPU, short result)
 
 void SetConst(MachineState *CPU, FILE *output)
 {   
-    // TODO Check for negative numbers... 
 
     unsigned short int reg = INSN_11_9(instruction);
     unsigned short int constant = INSN_8_0(instruction);
