@@ -25,6 +25,7 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 */
 
 #define OPCODE(I) ((I) >> 12)           // opcode
+#define OPCODEJSR(I) (((I) >> 11) & 0x1)           // opcode
 #define INSN_11_9(I) (((I) >> 9) & 0x7) // get rd
 #define INSN_8_6(I) (((I) >> 6) & 0x7)  // get rs
 #define INSN_8_7(I) (((I) >> 7) & 0x3)  // get subopcode for cmp
@@ -210,7 +211,7 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
     break;
     case 4: // JSR - WIll call JSRR inside here if that is what is being called
         ClearSignals(CPU);
-        
+        JSROp(CPU, output);
     case 5: // Logicals
         ClearSignals(CPU);
         LogicalOp(CPU, output);
@@ -777,7 +778,22 @@ void JumpOp(MachineState *CPU, FILE *output)
  */
 void JSROp(MachineState *CPU, FILE *output)
 {
+    unsigned short opcode = OPCODEJSR(instruction);
+    unsigned short rs = INSN_8_6(instruction);
+    unsigned short imm10 = INSN_10_0(instruction);
 
+    if (opcode == 1)
+    {
+        WriteOut(CPU, output);
+        CPU->R[7] = CPU->PC + 1;
+        CPU->PC = (CPU->PC & 0x8000) | (imm10 << 0x4);
+
+    } else 
+    {
+        WriteOut(CPU, output);
+        CPU->R[7] = CPU->PC + 1;
+        CPU->PC = CPU->R[rs];
+    }
 }
 
 /*
