@@ -808,6 +808,10 @@ void ShiftModOp(MachineState *CPU, FILE *output)
     unsigned short uimm4 = INSN_3_0(instruction); 
     signed short int neg;
 
+    CPU->regFile_WE = 1;
+    CPU->NZP_WE = 1;
+    CPU->DATA_WE = 0;
+    CPU->regInputVal = 0;
     switch (subopcode)
     {
     case 0: // SLL
