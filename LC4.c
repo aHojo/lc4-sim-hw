@@ -17,8 +17,8 @@ void intToB(char *); // Always gives my the revers order
 
 void GetHighConst(MachineState* CPU, FILE* output);
 
-void StrOp(MachineState *CPU, FILE *output);
-void LoadOp(MachineState *CPU, FILE *output);
+int StrOp(MachineState *CPU, FILE *output);
+int LoadOp(MachineState *CPU, FILE *output);
 
 /*
 MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
@@ -34,14 +34,11 @@ MACROS TO GRAB THE PIECES OF THE INSTRUCTIONS
 #define INSN_15_9(I) (((I) >> 9) & 0x7F); // Get Branch OPCODE
 #define INSN_4_0(I) ((I)&0x1F)           // for add IMMM
 #define CHECK_MSB(I) ((I) >> 15) // Get MSB
+#define CHECK_MSB_9(I) (((I) >> 8) & (1)) // SEXT(IMM9)
 #define INSN_15_11(I) (((I) >> 11) & 0x1F) // Get Jump OPCODE
-#define INSN_5_3(I) (((I) >> 3) & 0x7)
-#define INSN_8_7(I) (((I) >> 7) & 0x3)
-#define INSN_5_0(I) ((I)&0x3F)
-#define INSN_5_4(I) (((I) >> 4) & 0x3)
-#define INSN_3_0(I) ((I)&0xF)
-#define INSN_6_0(I) ((I)&0x7F)
-#define INSN_5(I) (((I) >> 5) & 0x1)
+#define INSN_5_3(I) (((I) >> 3) & 0x7) // Get the sub-opcode
+#define INSN_5_0(I) ((I)&0x3F) // GET IMM5
+
 
 //  Instruction we are currently executing.
 unsigned short int instruction;
@@ -157,12 +154,12 @@ void WriteOut(MachineState *CPU, FILE *output)
     if (CPU->DATA_WE == 1)
     {
         fprintf(output, "%04X ", CPU->dmemAddr);
-        fprintf(output, "%04X ", CPU->dmemValue);
+        fprintf(output, "%04X", CPU->dmemValue);
     }
     else
     {
         fprintf(output, "%04X ", 0);
-        fprintf(output, "%04X ", 0);
+        fprintf(output, "%04X", 0);
     }
     
     fputs("\n", output);
@@ -174,6 +171,7 @@ void WriteOut(MachineState *CPU, FILE *output)
 int UpdateMachineState(MachineState *CPU, FILE *output)
 {
     unsigned short opcode;
+    unsigned short check;;
 
     if (CPU->PC == 0x80FF)
     {
@@ -201,15 +199,21 @@ int UpdateMachineState(MachineState *CPU, FILE *output)
         break;
     case 6: // Load
         ClearSignals(CPU);
-        LoadOp(CPU, output);
+        check = LoadOp(CPU, output);
+        if (check != 0)
+        {
+            return 1;
+        }
         WriteOut(CPU, output);
         UpdatePC(CPU,0);
-        fclose(output);
         break;
     case 7: //Store operations
         ClearSignals(CPU);
-        StrOp(CPU, output);
-
+        check = StrOp(CPU, output);
+        if (check != 0)
+        {
+            return 1;
+        }
         WriteOut(CPU, output);
         UpdatePC(CPU, 0);
     break;
@@ -605,11 +609,13 @@ void ShiftModOp(MachineState *CPU, FILE *output)
 {
 }
 
-void LoadOp(MachineState *CPU, FILE *output)
+int LoadOp(MachineState *CPU, FILE *output)
 {
     unsigned short int rd;
     unsigned short int rs;
     unsigned short int imm5;
+    signed short extendSign;
+    unsigned short psr;
     int x;
 
     rd = INSN_11_9(instruction);
@@ -620,11 +626,39 @@ void LoadOp(MachineState *CPU, FILE *output)
     CPU->DATA_WE = 1;
     CPU->regFile_WE = 1;
 
+    extendSign = imm5;
+	if (((imm5 >> 5) & 1) == 1) {
+		extendSign = imm5 | 0xffc0;
+	}
+
+    // Check for invalid memory address
+    if (CPU->R[rs] + extendSign >= 0x0000 && CPU->R[rs] + extendSign <= 0x1fff)
+    {
+        printf("Trying to execute in user code land");
+        return 3;
+    }
+    if (CPU->R[rs] + extendSign >= 0x8000 && CPU->R[rs] + extendSign <= 0x9FFF)
+    {
+        printf("Trying to execute in os code land");
+        return 3;
+    }
+
+    // Get psr for priveleges check
+    psr = CHECK_MSB(CPU->PSR);
+    if (psr == 0 &&
+        CPU->R[rs] + extendSign >= 0xA000 && 
+        CPU->R[rs] + extendSign <= 0xFFFF
+    )
+    {
+        printf("Trying to execute in os data land");
+        return 4;
+    }
+
     CPU->dmemAddr = CPU->R[rs] + imm5;
     CPU->dmemValue = CPU->memory[CPU->dmemAddr];
     CPU->R[rd] = CPU->dmemValue;
     CPU->regInputVal = CPU->dmemValue;
-
+    lastRegWritten = rd;
     x = CHECK_MSB(CPU->R[rd]);
 
     if (x == 1)
@@ -638,25 +672,60 @@ void LoadOp(MachineState *CPU, FILE *output)
     else {
         SetNZP(CPU, 1);
     }
-
+    return 0;
 
 }
 
-void StrOp(MachineState *CPU, FILE *output)
+int StrOp(MachineState *CPU, FILE *output)
 {
     unsigned short int rt;
     unsigned short int rs;
     short int imm5;
+    signed short extendSign;
+    unsigned short int psr;
+	
 
     rt = INSN_11_9(instruction);
     rs = INSN_8_6(instruction);
     imm5 = INSN_5_0(instruction);
 
+    
+    extendSign = imm5;
+	if (((imm5 >> 5) & 1) == 1) {
+		extendSign = imm5 | 0xffc0;
+	}
+
+    // Check for invalid memory address
+    if (CPU->R[rs] + extendSign >= 0x0000 && CPU->R[rs] + extendSign <= 0x1fff)
+    {
+        printf("Trying to execute in user code land");
+        return 3;
+    }
+    if (CPU->R[rs] + extendSign >= 0x8000 && CPU->R[rs] + extendSign <= 0x9FFF)
+    {
+        printf("Trying to execute in os code land");
+        return 3;
+    }
+
+    // Get psr for priveleges check
+    psr = CHECK_MSB(CPU->PSR);
+    if (psr == 0 &&
+        CPU->R[rs] + extendSign >= 0xA000 && 
+        CPU->R[rs] + extendSign <= 0xFFFF
+    )
+    {
+        printf("Trying to execute in os data land");
+        return 4;
+    }
+
+
     CPU->DATA_WE = 1;
 
-    CPU->dmemAddr = CPU->R[rs] + imm5;
+    CPU->dmemAddr = CPU->R[rs] + extendSign;
     CPU->dmemValue = CPU->R[rt];
     CPU->memory[CPU->dmemAddr] = CPU->R[rt];
+
+    return 0;
 }
 /*
  * Set the NZP bits in the PSR.
@@ -712,16 +781,23 @@ void SetConst(MachineState *CPU, FILE *output)
 
     unsigned short int reg = INSN_11_9(instruction);
     unsigned short int constant = INSN_8_0(instruction);
+    signed short int extendSign;
 
+
+    extendSign = constant;
+    if(CHECK_MSB_9(extendSign) == 1){
+        extendSign = extendSign | 0xFE00;
+    }
     lastRegWritten = reg;
-    CPU->R[reg] = constant;
+    CPU->R[reg] = extendSign;
 
     CPU->rdMux_CTL = 0;
     CPU->regFile_WE = 1;
-    CPU->regInputVal = CPU->R[reg];
-
     CPU->NZP_WE = 1;
     CPU->DATA_WE = 0;
+    CPU->regInputVal = CPU->R[reg];
+
+    
 
     if(constant < 0)
     {
@@ -796,7 +872,7 @@ void GetHighConst(MachineState* CPU, FILE* output)
     CPU->rdMux_CTL = 0;
     CPU->DATA_WE = 0;
 
-    CPU->R[rd] =  (rd & 0xFF) | (imm8 << 8);
+    CPU->R[rd] =  (CPU->R[rd] & 0xFF) | (imm8 << 8);
     CPU->regInputVal = CPU->R[rd];
     neg = CPU->R[rd] & 0x8000; // check if negative
 
